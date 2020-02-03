@@ -1,3 +1,28 @@
+#Version 1 data
+ALL_mono_data <- read.csv("/home/liu/EDGE/monoallele_2/ALL_monoalleles_data_f5.csv",header=F,stringsAsFactors=F)
+ALL_mono_data_A11 <- read.csv("/home/liu/EDGE/A1101_MPTAC_rmdup_blast_flanking_neonTPM.csv",header=T,stringsAsFactors=F)
+ALL_mono_data_A2  <- read.csv("/home/liu/EDGE/A0201_MPTAC_rmdup_blast_flanking_neonTPM.csv",header=T,stringsAsFactors=F)
+
+#includ MAPTAC monoallele
+MPTAC_A11 <- read.csv("/home/liu/EDGE/A1101_MPTAC.csv",header=T,stringsAsFactors=F)
+MPTAC_A2  <- read.csv("/home/liu/EDGE/A0201_MPTAC.csv",header=T,stringsAsFactors=F)
+colnames(ALL_mono_data_A11) <- colnames(ALL_mono_data)
+colnames(ALL_mono_data_A2) <- colnames(ALL_mono_data)
+ALL_mono_data <- rbind(ALL_mono_data,ALL_mono_data_A11,ALL_mono_data_A2)
+#load deconvlution peptidome
+ALL_multi_data <- read.csv("/home/liu/EDGE/monoallele_2/deconv_CCLETPM_f5.csv",stringsAsFactors=F,header=T)
+colnames(ALL_multi_data) <- colnames(ALL_mono_data)
+ALL_multi_data <- ALL_multi_data[-which(ALL_multi_data[,5] %in% c("HLA-C*07:02","HLA-C*01:02","HLA-C*03:04","HLA-C*03:03")),]
+tmp.negcon <- read.csv("/home/liu/EDGE/monoallele_9/negcon.csv",header=F,stringsAsFactors=F)
+ALL_mono_data <- ALL_mono_data[!(ALL_mono_data[,1] %in% tmp.negcon[,1]),]
+ALL_multi_data <- ALL_multi_data[!(ALL_multi_data[,1] %in% tmp.negcon[,1]),]
+#moving deconv overlaping with MAPTAC
+index.mv2mono <- which((ALL_multi_data[,1] %in% MPTAC_A11[,1]) & (ALL_multi_data[,5]=="HLA-A*11:01"))
+ALL_mono_data <- rbind(ALL_mono_data,ALL_multi_data[index.mv2mono,])
+ALL_multi_data <- ALL_multi_data[-index.mv2mono,]
+index.mv2mono <- which((ALL_multi_data[,1] %in% MPTAC_A2[,1]) & (ALL_multi_data[,5]=="HLA-A*02:01"))
+ALL_mono_data <- rbind(ALL_mono_data,ALL_multi_data[index.mv2mono,])
+ALL_multi_data <- ALL_multi_data[-index.mv2mono,]
 
 mono2019_unfiltered <- read.csv("/home/liu/EDGE/neon2019/mono_unfiltered.csv",header=T,stringsAsFactors=F)
 mono2019_unfiltered <- mono2019_unfiltered[,c(1,5,7,8)]
@@ -108,3 +133,77 @@ for(i in 1:nrow(Neon_2019_blast_res2)){
 	}
 }
 write.table(Neon_2019_blast_res2,"/home/liu/EDGE/neon2019/new_mono_rmdup_blast_flanking_TPM.csv",col.names=F,row.names=F,quote=F,sep=",")
+
+Neon_2019_blast_res2 <- read.csv("/home/liu/EDGE/neon2019/new_mono_rmdup_blast_flanking_TPM.csv",header=FALSE, stringsAsFactors=FALSE)
+Neon_2019_blast_res2 <- Neon_2019_blast_res2[Neon_2019_blast_res2[,3] %in% 8:11,]
+
+for(i in 1:length(hla)){
+    print(hla[i])
+    tmp.hla <- gsub(":","",(gsub("\\*","",gsub("HLA-","",hla[i]))))
+    tmp.pep.2019 <- Neon_2019_blast_res2[Neon_2019_blast_res2[,1]==tmp.hla,]
+    tmp.pep.2019.tmp <- tmp.pep.2019[,c(2,4,7,8,1)]
+    tmp.pep.2019.tmp[,4] <- log10(tmp.pep.2019.tmp[,4])
+    tmp.pep.2019.tmp[,6] <- "mono"
+    tmp.pep.2019.tmp[,5] <- hla[i]
+	colnames(tmp.pep.2019.tmp) <- colnames(ALL_mono_data)
+    tmp.pep.acer.mono <- ALL_mono_data[ALL_mono_data[,5]==hla[i],]
+    tmp.pep.acer.mono <- tmp.pep.acer.mono[!duplicated(tmp.pep.acer.mono),]
+    tmp.pep.acer.mult <- ALL_multi_data[ALL_multi_data[,5]==hla[i],]
+    tmp.pep.acer.mult <- tmp.pep.acer.mult[!duplicated(tmp.pep.acer.mult),]
+    
+    #if multi matched, move 2019 to mono
+    index.multi <- which(tmp.pep.acer.mult[,1] %in% tmp.pep.2019.tmp[,1])
+    index.2019 <- which(tmp.pep.2019.tmp[,1] %in% tmp.pep.acer.mult[,1])
+    if(length(index.multi)!=0){
+        tmp.pep.acer.mult <- tmp.pep.acer.mult[-index.multi,] #very important, do not omit it !
+        tmp.pep.acer.mono_2019 <- rbind(tmp.pep.acer.mono,tmp.pep.2019.tmp[index.2019,])
+        tmp.pep.acer.mono_2019 <- tmp.pep.acer.mono_2019[!duplicated(tmp.pep.acer.mono_2019),]
+        #sum(tmp.pep.acer.mult[,1] %in% tmp.pep.acer.mono_2019[,1])
+    } else {
+	    tmp.pep.acer.mono_2019 <- tmp.pep.acer.mono
+	}
+    #if mono_2017 matched, take maximum expression record
+	
+    total.mono <- rbind(tmp.pep.acer.mono_2019,tmp.pep.2019.tmp)
+    unique.pep <- unique(total.mono[,1])
+	res.mono <- data.frame(matrix(ncol=6,nrow=length(unique.pep)))
+    for(j in 1:length(unique.pep)){
+	    index.pep <- which(total.mono[,1]==unique.pep[j])
+		if(length(index.pep)==1){
+		    res.mono[j,] <- total.mono[index.pep,]
+		} else {
+		    highest.expression <- max(total.mono[index.pep,4])
+			tmp.res <- total.mono[index.pep[total.mono[index.pep,4] == highest.expression],]
+			res.mono[j,] <- tmp.res[1,]
+	    }
+	}
+	if(nrow(tmp.pep.acer.mult)>0){
+	    colnames(tmp.pep.acer.mult) <- colnames(res.mono) 
+	    res.allele <- rbind(res.mono,tmp.pep.acer.mult)
+	} else {
+	    res.allele <- res.mono
+	}
+	if(i==1){res.all <- res.allele} else {res.all <- rbind(res.all,res.allele)}
+}
+
+#put all mono allele into it
+all.hla <- unique(Neon_2019_blast_res2[,1])
+tmp.hla <- unlist(lapply(hla,function(x)gsub(":","",(gsub("\\*","",gsub("HLA-","",x))))))
+for(i in 1:length(all.hla)){
+    if(all.hla[i] %in% tmp.hla){
+	    print(all.hla[i])
+	    print("done")
+	} else {
+	    print(all.hla[i])
+        tmp.pep.2019 <- Neon_2019_blast_res2[Neon_2019_blast_res2[,1]==all.hla[i],]
+        tmp.pep.2019.tmp <- tmp.pep.2019[,c(2,4,7,8,1)]
+        tmp.pep.2019.tmp[,4] <- log10(tmp.pep.2019.tmp[,4])
+        tmp.pep.2019.tmp[,6] <- "mono"
+		tmp.hla.sep <- unlist(strsplit(all.hla[i],""))
+        tmp.pep.2019.tmp[,5] <- paste(c("HLA-",tmp.hla.sep[1],"*",tmp.hla.sep[2:3],":",tmp.hla.sep[4:5]),collapse="")
+		colnames(tmp.pep.2019.tmp) <- colnames(res.all)
+		res.all <- rbind(res.all,tmp.pep.2019.tmp)
+	}
+}
+write.table(res.all,"/home/liu/EDGE/neon2019/positive_pep.csv",row.names=F,quote=F,sep=",")
+res.all <- read.csv("/home/liu/EDGE/neon2019/positive_pep.csv",header=T,stringsAsFactors=F)
